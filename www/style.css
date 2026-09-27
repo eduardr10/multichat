@@ -87,44 +87,6 @@ body {
 
 #btn-settings:active { opacity: 0.7; }
 
-#yt-embed-wrap {
-  display: flex;
-  flex-direction: column;
-  border-bottom: 1px solid var(--border);
-  background: #000;
-  max-height: 46vh;
-}
-
-#yt-embed-wrap[hidden] { display: none; }
-
-#yt-embed-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--muted);
-  background: var(--panel);
-  padding: 5px 10px;
-}
-
-#yt-embed-bar button {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--muted);
-  border-radius: 6px;
-  font-size: 11px;
-  padding: 3px 8px;
-  cursor: pointer;
-}
-
-#yt-embed {
-  flex: 1;
-  width: 100%;
-  min-height: 240px;
-  border: 0;
-  background: #000;
-}
-
 #chat {
   flex: 1;
   overflow-y: auto;

@@ -18,14 +18,6 @@
     <button id="btn-settings" type="button">Ajustes</button>
   </header>
 
-  <section id="yt-embed-wrap" hidden>
-    <div id="yt-embed-bar">
-      <span>YouTube &middot; chat embebido</span>
-      <button id="yt-embed-close" type="button">ocultar</button>
-    </div>
-    <iframe id="yt-embed" title="Chat de YouTube" allowtransparency="true" scrolling="no"></iframe>
-  </section>
-
   <main id="chat" aria-live="polite"></main>
 
   <button id="jump" type="button" hidden></button>
@@ -45,8 +37,12 @@
       <input id="inp-youtube" type="text" placeholder="@canal, youtube.com/@canal o URL del stream" autocomplete="off" spellcheck="false" />
 
       <label for="inp-key">API key de YouTube (opcional)</label>
-      <input id="inp-key" type="text" placeholder="AIza... (sin clave tambien funciona)" autocomplete="off" spellcheck="false" />
-      <p class="hint" id="yt-hint">Sin clave la app usa el chat interno de YouTube (cero configuracion). Con clave usa la API oficial (mas estable). Guia en docs/SETUP.md</p>
+      <input id="inp-key" type="text" placeholder="AIza... (para mezclar YouTube en la lista)" autocomplete="off" spellcheck="false" />
+      <p class="hint" id="yt-hint">Otra opcion sin cuota: relay propio (campo de abajo). En la APK YouTube funciona sin nada. Guia en docs/SETUP.md</p>
+
+      <label for="inp-relay">Relay propio de YouTube (opcional, solo web)</label>
+      <input id="inp-relay" type="text" placeholder="https://tu-relay.workers.dev" autocomplete="off" spellcheck="false" />
+      <p class="hint">Despliegalo una vez y YouTube se mezcla en la lista sin API key (guia: docs/SETUP.md). En la APK deja esto vacio.</p>
 
       <label for="inp-kick">Canal de Kick</label>
       <input id="inp-kick" type="text" placeholder="ej. canal_ejemplo" autocomplete="off" spellcheck="false" />

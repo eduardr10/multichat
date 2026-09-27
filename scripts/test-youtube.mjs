@@ -73,7 +73,8 @@ let pass = false;
 if (givenInput) {
   console.log(`Probando entrada indicada: ${givenInput}`);
   const r = await runAdapter('directo', givenInput, apiKey, 45000);
-  pass = r.connected && r.messages > 0;
+  // Conectar basta: el chat puede estar en silencio (mensajes = informativo).
+  pass = r.connected;
 } else if (apiKey) {
   console.log('\n--- modo OFICIAL (con API key) ---');
   const lives = await findLive();
@@ -89,7 +90,7 @@ if (givenInput) {
   console.log(lives.length ? `candidatos: ${lives.join(', ')}` : 'sin candidatos');
   for (const id of lives.slice(0, 3)) {
     const r = await runAdapter('innertube', id, '', 30000);
-    pass = r.connected && r.messages > 0;
+    pass = r.connected;
     if (pass) break;
   }
 }

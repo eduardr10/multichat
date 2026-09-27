@@ -21,11 +21,11 @@
 | Plataforma | Método | Credencial |
 |---|---|---|
 | **Twitch** | WebSocket `wss://irc-ws.chat.twitch.tv:443`, anon `justinfan####`, parseo PRIVMSG | ninguna |
-| **YouTube** | **Híbrido**: sin API key → polling InnerTube no oficial (key web pública de YouTube, cero configuración); con API key en Ajustes → Data API v3 `liveChatMessages.list` (oficial, 1 unidad/llamada, 10.000/día ≈ +13 h de stream) | opcional |
+| **YouTube** | **Híbrido**: sin API key → polling InnerTube no oficial (key web pública de YouTube, cero configuración); con API key en Ajustes → Data API v3 `liveChatMessages.list` (oficial, 500 unidades/llamada → ~20 consultas/día con la cuota por defecto) | opcional |
 | **Kick** | Bootstrap HTTP (`kick.com/api/v2/channels/{slug}` + token `parrott`) → WebSocket chat (`chat_v2`, protocolo Phoenix) | ninguna |
 
 - Adapter Kick propio (~150 líneas), protocolo verificado contra la fuente MIT `@retconned/kick-js` (npm, actualizado 2026) — esa lib usa `ws`/`axios` (solo Node), así que replicamos con `WebSocket` + `CapacitorHttp` nativos.
-- **Versión web (GitHub Pages)**: mismo código en navegador — Twitch y Kick sin clave, YouTube solo con API key (InnerTube devuelve 403 con Origin externo; verificado). Config e historial en `localStorage` (por dominio), deploy con `.github/workflows/pages.yml`.
+- **Versión web (GitHub Pages)**: mismo código en navegador — Twitch y Kick sin clave; YouTube da 403 con Origin externo (verificado), así que la web lo mezcla con **relay propio** (`relay/worker.js`, Cloudflare Workers gratis, despliegue de1 min) o con API key. Config e historial en `localStorage` (por dominio), deploy con `.github/workflows/pages.yml`.
 - **YouTube sin API key = modo por defecto** (polling InnerTube no oficial, cero configuración: se pega el enlace o `@canal` y funciona); con API key en Ajustes pasa al endpoint oficial.
 - Arquitectura de adapters con interfaz única `connect() / disconnect() / onMessage(cb) / send()` (el `send` queda como stub para la fase futura de envío).
 

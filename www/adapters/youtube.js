@@ -8,20 +8,10 @@ const MIN_WAIT_MS = 3000;
 const MAX_WAIT_MS = 15000;
 const ERROR_WAIT_MS = 15000;
 const FIRST_BATCH_GRACE_MS = 5 * 60 * 1000;
-const EMBED_REFRESH_MS = 120000;
-const PIPED_API = 'https://api.piped.private.coffee';
-// Instancias con CORS (ACAO *) probadas hoy: buscan directos por nombre/canal.
-const INVIDIOUS = [
-  'https://invidious.f5.si',
-  'https://iv.ggtyler.dev',
-  'https://invidious.jing.rocks',
-  'https://yt.artemislena.eu',
-  'https://invidious.privacyredirect.com',
-];
 
-// En navegador (GitHub Pages / serve) sin plataforma nativa, InnerTube devuelve
-// 403 con Origin externo y sin cabeceras CORS: el modo sin clave en la web es
-// el chat embebido oficial (panel iframe); la APK usa InnerTube directo.
+// En navegador (GitHub Pages / serve) YouTube bloquea las llamadas cruzadas
+// (403 con Origin externo y sin cabeceras CORS). La web usa un relay propio
+// (o API key); la APK llama a InnerTube directo, sin nada.
 const IS_BROWSER =
   typeof window !== 'undefined' && typeof document !== 'undefined' && !window.Capacitor?.isNativePlatform?.();
 
@@ -62,11 +52,13 @@ export class YouTubeAdapter extends BaseAdapter {
     this._seen = new Set();
     this._startedAt = 0;
     this._warmed = false;
+    this._relay = '';
   }
 
   _connect() {
     const input = String(this.config?.input || '').trim();
     const apiKey = String(this.config?.apiKey || '').trim();
+    const relay = String(this.config?.relay || '').trim();
     if (!input) {
       this._setStatus(STATUS.OFF);
       return;
@@ -76,7 +68,14 @@ export class YouTubeAdapter extends BaseAdapter {
       this._fail('Enlace de YouTube no reconocido');
       return;
     }
-    this._mode = apiKey ? 'official' : IS_BROWSER ? 'embed' : 'innertube';
+    if (IS_BROWSER && !apiKey && !relay) {
+      this._fail(
+        'YouTube en la web necesita relay propio o API key (en la APK funciona sin nada). Guia en docs/SETUP.md',
+      );
+      return;
+    }
+    this._relay = IS_BROWSER && relay ? relay.replace(/\/+$/, '') : '';
+    this._mode = apiKey ? 'official' : 'innertube';
     this._videoId = this._parsed.kind === 'video' ? this._parsed.value : null;
     this._chatId = null;
     this._pageToken = null;
@@ -85,14 +84,18 @@ export class YouTubeAdapter extends BaseAdapter {
     this._warmed = false;
     this._startedAt = Date.now();
     this._setStatus(STATUS.CONNECTING);
-    if (this._mode === 'embed') this._embedLoop();
-    else this._loop();
+    this._loop();
   }
 
   // ---------- HTTP ----------
 
+  // En la web todas las llamadas a youtube.com pasan por el relay propio.
+  _wrap(url) {
+    return this._relay ? `${this._relay}/?url=${encodeURIComponent(url)}` : url;
+  }
+
   async _fetchText(url) {
-    const res = await fetch(url, { headers: { 'user-agent': UA, cookie: COOKIE } });
+    const res = await fetch(this._wrap(url), { headers: { 'user-agent': UA, cookie: COOKIE } });
     if (!res.ok) throw new Error('YouTube: HTTP ' + res.status);
     return { text: await res.text(), url: res.url };
   }
@@ -115,7 +118,7 @@ export class YouTubeAdapter extends BaseAdapter {
       cookie: COOKIE,
     };
     if (this._visitor) headers['x-goog-visitor-id'] = this._visitor;
-    const res = await fetch(`https://www.youtube.com/youtubei/v1/${path}?key=${this._key}&prettyPrint=false`, {
+    const res = await fetch(this._wrap(`https://www.youtube.com/youtubei/v1/${path}?key=${this._key}&prettyPrint=false`), {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -279,130 +282,6 @@ export class YouTubeAdapter extends BaseAdapter {
     return Math.min(Math.max(Number(data.pollingIntervalMillis) || 5000, 5000), MAX_WAIT_MS);
   }
 
-  // ---------- modo embebido (web sin clave) ----------
-
-  async _embedGet(url) {
-    let res;
-    try {
-      res = await fetch(url);
-    } catch (err) {
-      throw new Error('Sin conexión con ' + new URL(url).hostname + ': ' + String(err.message || err));
-    }
-    if (!res.ok) throw new Error(new URL(url).hostname + ': HTTP ' + res.status + ' (reintento)');
-    return res;
-  }
-
-  async _embedPiped(path) {
-    const res = await this._embedGet(PIPED_API + path);
-    try {
-      return await res.json();
-    } catch {
-      throw new Error('Respuesta inválida del proxy (reintento)');
-    }
-  }
-
-  async _embedInvidious(path) {
-    let lastErr = null;
-    for (const base of INVIDIOUS) {
-      try {
-        const res = await this._embedGet(base + path);
-        return await res.json();
-      } catch (err) {
-        lastErr = err;
-      }
-    }
-    throw lastErr || new Error('Invidious no responde (reintento)');
-  }
-
-  // Los directos de Piped aparecen con duration/uploaded = -1 (los VOD con datos).
-  _isLiveItem(item) {
-    return !!item && (item.duration === -1 || item.uploaded === -1);
-  }
-
-  _idFromWatchUrl(url) {
-    const m = /[?&]v=([\w-]{11})/.exec(url || '');
-    return m ? m[1] : null;
-  }
-
-  _findLiveId(items) {
-    for (const item of items || []) {
-      const id = this._idFromWatchUrl(item?.url);
-      if (id && this._isLiveItem(item)) return id;
-    }
-    return null;
-  }
-
-  async _embedChannelTarget() {
-    const path = this._parsed.value;
-    if (path.startsWith('/channel/')) {
-      const uc = path.slice('/channel/'.length);
-      const cj = await this._embedPiped('/channel/' + uc);
-      if (!cj?.name) throw new Error('No pude leer ese canal (reintento)');
-      return { uc, name: cj.name };
-    }
-    if (path.startsWith('/@')) {
-      const handle = path.slice(2);
-      const sj = await this._embedPiped('/search?q=' + encodeURIComponent(handle) + '&filter=channels');
-      const items = (sj.items || []).filter((i) => i.type === 'channel' && typeof i.url === 'string' && i.url.includes('/channel/'));
-      const pick = items.find((i) => (i.name || '').toLowerCase() === handle.toLowerCase()) || items[0];
-      if (!pick) throw new Error('No encontré ese canal en YouTube');
-      return { uc: pick.url.slice(pick.url.indexOf('/channel/') + '/channel/'.length), name: pick.name || handle };
-    }
-    throw new Error('En la web usa @handle o la URL del directo (no /c/ ni /user/)');
-  }
-
-  async _embedResolveChannelVideo() {
-    const { uc, name } = await this._embedChannelTarget();
-
-    // 1) Invidious: busca directos en vivo del nombre y te quedas con el del canal.
-    let invWorked = false;
-    try {
-      const items = await this._embedInvidious('/api/v1/search?q=' + encodeURIComponent(name) + '&type=video&features=live');
-      invWorked = true;
-      const hit = (Array.isArray(items) ? items : []).find((i) => i.authorId === uc);
-      if (hit?.videoId) return hit.videoId;
-    } catch {
-      /* instancias caídas: se intenta el respaldo */
-    }
-
-    // 2) Respaldo: Piped, videos del canal con marcador de vivo (duration/uploaded -1).
-    const sj = await this._embedPiped('/search?q=' + encodeURIComponent(name) + '&filter=videos');
-    const scoped = (sj.items || []).filter((i) => typeof i.url === 'string' && (i.uploaderUrl || '').includes(uc));
-    const id = this._findLiveId(scoped);
-    if (id) return id;
-    if (invWorked) throw new Error('Ese canal no tiene stream en vivo');
-    if (scoped.length) throw new Error('No pude confirmar el directo (reintento)');
-    throw new Error('No encontré videos de ese canal (reintento)');
-  }
-
-  async _embedResolveVideoId() {
-    if (this._parsed.kind !== 'video') return this._embedResolveChannelVideo();
-    const videoId = this._parsed.value;
-    const sj = await this._embedPiped('/search?q=' + encodeURIComponent(videoId) + '&filter=videos');
-    const item = (sj.items || []).find((i) => (i.url || '').includes(videoId));
-    if (!item) throw new Error('No encontré ese video (reintento)');
-    if (!this._isLiveItem(item)) throw new Error('Ese video no está en vivo o no tiene chat');
-    return videoId;
-  }
-
-  async _embedLoop() {
-    while (!this.stopped) {
-      try {
-        const videoId = await this._embedResolveVideoId();
-        if (this.stopped) return;
-        this._videoId = videoId;
-        this._connected();
-        this._emit('embed', videoId);
-        await this._sleep(EMBED_REFRESH_MS);
-      } catch (err) {
-        if (this.stopped) return;
-        this._emit('error', String(err.message || err));
-        this._setStatus(STATUS.ERROR);
-        await this._sleep(ERROR_WAIT_MS);
-      }
-    }
-  }
-
   // ---------- modo sin clave (InnerTube) ----------
 
   async _innertubePoll() {
@@ -491,7 +370,7 @@ export class YouTubeAdapter extends BaseAdapter {
           if (!this._videoId) this._videoId = await this._resolveVideoId();
         } else if (this._parsed.kind === 'channel' && !this._chatId) {
           if (this._parsed.value.startsWith('/c/')) {
-            if (IS_BROWSER) throw new Error('Con API key en la web usa @handle o la URL del directo (no /c/)');
+            if (IS_BROWSER && !this._relay) throw new Error('Con API key en la web usa @handle o la URL del directo (no /c/)');
             await this._loadInnertubeCfg();
             if (!this._videoId) this._videoId = await this._resolveVideoId();
           } else {
