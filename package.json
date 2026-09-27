@@ -1,0 +1,19 @@
+{
+  "name": "multichat",
+  "version": "0.1.0",
+  "description": "Chat unificado en tiempo real: YouTube + Twitch + Kick",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "python -m http.server 8080 -d www",
+    "test": "node scripts/test-twitch.mjs && node scripts/test-kick.mjs",
+    "apk": "pwsh -File scripts/build-apk.ps1"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.2"
+  }
+}

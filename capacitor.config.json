@@ -1,0 +1,13 @@
+{
+  "appId": "com.multichat.app",
+  "appName": "MultiChat",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}

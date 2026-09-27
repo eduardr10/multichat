@@ -1,0 +1,11 @@
+node_modules/
+MultiChat.apk
+android/local.properties
+android/app/build/
+android/app/src/main/assets/public/
+android/.gradle/
+android/build/
+android/capacitor-cordova-android-plugins/build/
+android/app/build/intermediates/
+.gradle/
+*.log

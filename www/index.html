@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111318" />
+  <title>MultiChat</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header id="topbar">
+    <div id="title">MultiChat</div>
+    <div id="statusbar">
+      <span class="pill" data-platform="twitch" data-status="idle"><i></i>TW</span>
+      <span class="pill" data-platform="youtube" data-status="idle"><i></i>YT</span>
+      <span class="pill" data-platform="kick" data-status="idle"><i></i>KI</span>
+    </div>
+    <button id="btn-settings" type="button">Ajustes</button>
+  </header>
+
+  <main id="chat" aria-live="polite"></main>
+
+  <button id="jump" type="button" hidden></button>
+
+  <footer id="composer">
+    <div id="composer-note">Lectura de chat &middot; env&iacute;o de mensajes: pr&oacute;ximamente</div>
+  </footer>
+
+  <div id="overlay" hidden>
+    <section id="settings" role="dialog" aria-label="Ajustes">
+      <h2>Ajustes</h2>
+
+      <label for="inp-twitch">Canal de Twitch</label>
+      <input id="inp-twitch" type="text" placeholder="ej. canal_ejemplo" autocomplete="off" spellcheck="false" />
+
+      <label for="inp-youtube">Canal o stream de YouTube</label>
+      <input id="inp-youtube" type="text" placeholder="@canal, youtube.com/@canal o URL del stream" autocomplete="off" spellcheck="false" />
+
+      <label for="inp-key">API key de YouTube (opcional)</label>
+      <input id="inp-key" type="text" placeholder="AIza... (sin clave tambien funciona)" autocomplete="off" spellcheck="false" />
+      <p class="hint" id="yt-hint">Sin clave la app usa el chat interno de YouTube (cero configuracion). Con clave usa la API oficial (mas estable). Guia en docs/SETUP.md</p>
+
+      <label for="inp-kick">Canal de Kick</label>
+      <input id="inp-kick" type="text" placeholder="ej. canal_ejemplo" autocomplete="off" spellcheck="false" />
+
+      <p id="settings-error" class="error" hidden></p>
+
+      <div class="row">
+        <button id="btn-cancel" type="button" class="ghost">Cancelar</button>
+        <button id="btn-save" type="button" class="primary">Guardar y conectar</button>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
