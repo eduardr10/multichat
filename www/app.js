@@ -16,16 +16,18 @@ const inputTwitch = document.getElementById('inp-twitch');
 const inputYoutube = document.getElementById('inp-youtube');
 const inputKey = document.getElementById('inp-key');
 const inputKick = document.getElementById('inp-kick');
+const ytEmbedWrap = document.getElementById('yt-embed-wrap');
+const ytEmbed = document.getElementById('yt-embed');
 
 const config = loadConfig();
 
-// Versión web (GitHub Pages / npm run serve): YouTube sin clave esta bloqueado
-// por CORS/Origin (403); Twitch y Kick funcionan igual que en la APK.
+// Versión web (GitHub Pages / npm run serve): YouTube sin clave se muestra en
+// el panel embebido oficial (InnerTube está bloqueado por CORS/Origin: 403).
 if (typeof window !== 'undefined' && !window.Capacitor?.isNativePlatform?.()) {
   const ytHint = document.getElementById('yt-hint');
   if (ytHint) {
     ytHint.textContent =
-      'Version web: Twitch y Kick sin clave; YouTube necesita API key (en la APK YouTube funciona sin clave). Guia en docs/SETUP.md';
+      'Version web: Twitch y Kick sin clave; YouTube sin clave se ve en el panel embebido (o pega la URL del directo). Con API key se integra en la lista unificada. Guia en docs/SETUP.md';
   }
 }
 
@@ -213,11 +215,34 @@ document.getElementById('btn-settings').addEventListener('click', openSettings);
 document.getElementById('btn-cancel').addEventListener('click', closeSettings);
 document.getElementById('btn-save').addEventListener('click', saveSettings);
 
+let embedVideoId = null;
+
 for (const [platform, adapter] of Object.entries(adapters)) {
-  adapter.on('status', (status) => setStatus(platform, status));
+  adapter.on('status', (status) => {
+    setStatus(platform, status);
+    if (platform === 'youtube' && status === 'off') {
+      embedVideoId = null;
+      ytEmbedWrap.hidden = true;
+      ytEmbed.src = 'about:blank';
+    }
+  });
   adapter.on('message', appendMessage);
   adapter.on('error', (error) => reportError(platform, error));
 }
+
+// Panel de chat embebido de YouTube (modo web sin API key).
+adapters.youtube.on('embed', (videoId) => {
+  if (embedVideoId === videoId) return;
+  embedVideoId = videoId;
+  ytEmbed.src = `https://www.youtube.com/live_chat?v=${videoId}&is_popout=1`;
+  ytEmbedWrap.hidden = false;
+});
+document.getElementById('yt-embed-close').addEventListener('click', () => {
+  ytEmbedWrap.hidden = true;
+});
+document.querySelector('.pill[data-platform="youtube"]').addEventListener('click', () => {
+  if (embedVideoId) ytEmbedWrap.hidden = !ytEmbedWrap.hidden;
+});
 
 for (const m of loadRecentMessages()) appendMessage(m, { history: true });
 
