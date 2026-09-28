@@ -37,12 +37,8 @@
       <input id="inp-youtube" type="text" placeholder="@canal, youtube.com/@canal o URL del stream" autocomplete="off" spellcheck="false" />
 
       <label for="inp-key">API key de YouTube (opcional)</label>
-      <input id="inp-key" type="text" placeholder="AIza... (para mezclar YouTube en la lista)" autocomplete="off" spellcheck="false" />
-      <p class="hint" id="yt-hint">Otra opcion sin cuota: relay propio (campo de abajo). En la APK YouTube funciona sin nada. Guia en docs/SETUP.md</p>
-
-      <label for="inp-relay">Relay propio de YouTube (opcional, solo web)</label>
-      <input id="inp-relay" type="text" placeholder="https://tu-relay.workers.dev" autocomplete="off" spellcheck="false" />
-      <p class="hint">Despliegalo una vez y YouTube se mezcla en la lista sin API key (guia: docs/SETUP.md). En la APK deja esto vacio.</p>
+      <input id="inp-key" type="text" placeholder="AIza... (opcional; la web lee el chat sin clave)" autocomplete="off" spellcheck="false" />
+      <p class="hint" id="yt-hint">La web lee el chat por scraping: pega el enlace del directo. Con @canal hace falta API key (o la APK).</p>
 
       <label for="inp-kick">Canal de Kick</label>
       <input id="inp-kick" type="text" placeholder="ej. canal_ejemplo" autocomplete="off" spellcheck="false" />

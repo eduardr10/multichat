@@ -1,7 +1,7 @@
 const KEY = 'multichat.config.v1';
 
 export function defaultConfig() {
-  return { twitchChannel: '', youtubeUrl: '', youtubeApiKey: '', youtubeRelay: '', kickChannel: '' };
+  return { twitchChannel: '', youtubeUrl: '', youtubeApiKey: '', kickChannel: '' };
 }
 
 export function loadConfig() {

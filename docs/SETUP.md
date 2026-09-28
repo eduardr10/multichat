@@ -31,8 +31,7 @@ historial de 5 min) vive en `localStorage` — no necesita servidor.
 |---|---|---|
 | Twitch sin clave | ✓ | ✓ |
 | Kick sin clave | ✓ | ✓ |
-| YouTube sin clave | ✓ | ✗ (YouTube da 403 con Origin externo; hace falta relay o key) |
-| YouTube con relay propio | ✓ (no hace falta) | ✓ (un despliegue gratis, ver abajo) |
+| YouTube sin clave | ✓ | ✓ (scraping del chat; sin clave) |
 | YouTube con API key | ✓ | ✓ |
 
 Publicar:
@@ -51,9 +50,8 @@ Abre la app → botón de ajustes (⚙) → rellena lo que quieras (puedes dejar
 | Campo | Qué poner | Clave necesaria |
 |---|---|---|
 | Canal de Twitch | nombre del canal, ej. `canal_ejemplo` | No |
-| Canal o stream de YouTube | `@canal`, nombre, URL de canal o URL del directo | No en APK / relay o key en web |
+| Canal o stream de YouTube | `@canal`, nombre, URL de canal o URL del directo | No (en web: URL del directo) |
 | API key de YouTube | opcional (ver abajo) | — |
-| Relay propio de YouTube | URL de tu worker (solo web, ver abajo) | — |
 | Canal de Kick | nombre del canal, ej. `canal_ejemplo` | No |
 
 Guarda y los tres conectores arrancan solos (píldoras TW/YT/KI en verde = conectado).
@@ -67,27 +65,18 @@ el `@handle` o el nombre del canal y la app usa el chat interno de YouTube
 Si pones un **canal**, busca el directo activo de ese canal automáticamente
 (si el canal está en vivo pero con chat desactivado, lo dice en pantalla).
 
-### YouTube en la web: relay propio (recomendado, gratis y sin cuota)
+### YouTube en la web (sin clave): scraping
 
-El navegador llama a youtube.com desde otra página y YouTube responde
-**403 sin CORS** (probado: también los proxies públicos no sirven para esto).
-La solución es despliegarte tu propio relay de 40 líneas con Cloudflare
-Workers (plan gratis, sin tarjeta):
+YouTube **no deja** que otras páginas llamen a su API de chat (403 con Origin
+externo, sin CORS; probado). La web lo resuelve leyendo el **popout del chat**
+(`live_chat?is_popout=1`), que devuelve el HTML con los mensajes recientes, a
+través de proxies GET con CORS (r.jina.ai → allorigins → codetabs, con
+rotación automática si alguno cae). Sin cuentas, sin claves, sin despliegues.
 
-```powershell
-npm install -g wrangler        # una vez
-wrangler login                 # cuenta gratis (GitHub)
-npx wrangler deploy relay/worker.js --name multichat-relay
-```
-
-`wrangler` imprime tu URL (algo así como
-`https://multichat-relay.TU-USUARIO.workers.dev`). En la app web:
-**Ajustes → "Relay propio de YouTube" → pega la URL → Guardar**. Listo:
-YouTube se mezcla en la lista unificada igual que en la APK.
-
-El relay solo acepta `youtube.com`/`googleapis.com`, elimina el `Origin` que
-YouTube rechaza y devuelve `Access-Control-Allow-Origin: *`. Código:
-`relay/worker.js`.
+- Pega en Ajustes la **URL del directo** (`https://www.youtube.com/watch?v=...`).
+- En la web con scraping no se puede resolver un `@canal` (eso necesita POST →
+  API key o la APK); el enlace del directo sí funciona siempre.
+- Cada ~4-5 s se refresca; los mensajes se deduplican por id.
 
 ### YouTube con API key (opcional)
 
@@ -97,8 +86,8 @@ YouTube rechaza y devuelve `Access-Control-Allow-Origin: *`. Código:
 
 Ojo con la cuota: la consulta de mensajes del chat cuesta **500 unidades** y la
 cuota por defecto son 10.000/día → da para ~20 consultas (unas 5 min de chat).
-Para directos largos en la web usa el relay (sin cuota) o pide aumento de
-cuota en la consola de Google.
+Para directos largos en la web usa el scraping sin clave de arriba, o pide
+aumento de cuota en la consola de Google.
 
 ## Comportamiento de la pantalla
 
@@ -115,15 +104,14 @@ cuota en la consola de Google.
 npm test                                          # Twitch + Kick (red)
 node scripts/test-youtube.mjs                     # YouTube: busca un live de prueba
 node scripts/test-youtube.mjs https://www.youtube.com/watch?v=...  # un directo concreto
-node scripts/test-web-relay.mjs                   # modo web (relay local simulado)
+node scripts/test-web-scrape.mjs                   # modo web (scraping, directo concreto)
 $env:YT_API_KEY='...'; node scripts/test-youtube.mjs  # modo oficial con clave
 ```
 
 ## Notas de desarrollo
 
 - Frontend: `www/` (HTML/JS vanilla, sin bundler). Tras editar, `npm run apk` (o `npx cap sync android`).
-- `npm run serve` → sirve la UI en el navegador: Twitch y Kick funcionan tal
-  cual; YouTube necesita relay propio o API key (en el APK no hace falta nada).
+- `npm run serve` → sirve la UI en el navegador: Twitch y Kick sin clave, y
+  YouTube por scraping del chat (pega la URL del directo).
 - Estructura: `www/adapters/{twitch,youtube,kick}.js` (conectores),
-  `www/app.js` (unión), `www/store.js` (configuración + historial),
-  `relay/worker.js` (relay web de YouTube).
+  `www/app.js` (unión), `www/store.js` (configuración + historial).

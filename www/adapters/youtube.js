@@ -10,8 +10,9 @@ const ERROR_WAIT_MS = 15000;
 const FIRST_BATCH_GRACE_MS = 5 * 60 * 1000;
 
 // En navegador (GitHub Pages / serve) YouTube bloquea las llamadas cruzadas
-// (403 con Origin externo y sin cabeceras CORS). La web usa un relay propio
-// (o API key); la APK llama a InnerTube directo, sin nada.
+// (403 con Origin externo, sin CORS), asi que la web lee el chat por scraping
+// del popout del chat pasandolo por proxies GET con CORS. La APK llama a
+// InnerTube directo (CapacitorHttp), sin nada.
 const IS_BROWSER =
   typeof window !== 'undefined' && typeof document !== 'undefined' && !window.Capacitor?.isNativePlatform?.();
 
@@ -35,6 +36,67 @@ function badgesFrom(list) {
   return out;
 }
 
+// El popout del chat (live_chat?is_popout=1) trae los mensajes recientes en
+// window["ytInitialData"] dentro del HTML. Extraemos ese objeto JSON.
+function extractInitialData(html) {
+  const i = html.indexOf('window["ytInitialData"] = ');
+  if (i < 0) return null;
+  const start = html.indexOf('{', i);
+  if (start < 0) return null;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  for (let j = start; j < html.length; j++) {
+    const c = html[j];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) {
+        try {
+          return JSON.parse(html.slice(start, j + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+const CHAT_RENDERERS = [
+  'liveChatTextMessageRenderer',
+  'liveChatPaidMessageRenderer',
+  'liveChatMembershipItemRenderer',
+  'giftMessageViewModel',
+];
+
+function collectChat(data) {
+  const list = [];
+  (function walk(o) {
+    if (!o || typeof o !== 'object') return;
+    for (const k of CHAT_RENDERERS) {
+      if (o[k] && typeof o[k] === 'object') list.push({ [k]: o[k] });
+    }
+    for (const v of Object.values(o)) if (typeof v === 'object') walk(v);
+  })(data);
+  return list;
+}
+
+// Proxies GET con CORS para que el navegador pueda leer el HTML del popout.
+// Se prueban en orden y se rotan al fallar; todos reciben el Origin del sitio.
+const SCRAPE_PROXIES = [
+  (u) => ({ url: 'https://r.jina.ai/' + u, headers: { 'x-return-format': 'html', 'x-no-cache': 'true' } }),
+  (u) => ({ url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u), headers: {} }),
+  (u) => ({ url: 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u), headers: {} }),
+];
+
 export class YouTubeAdapter extends BaseAdapter {
   constructor() {
     super('youtube');
@@ -52,13 +114,12 @@ export class YouTubeAdapter extends BaseAdapter {
     this._seen = new Set();
     this._startedAt = 0;
     this._warmed = false;
-    this._relay = '';
+    this._proxyIdx = 0;
   }
 
   _connect() {
     const input = String(this.config?.input || '').trim();
     const apiKey = String(this.config?.apiKey || '').trim();
-    const relay = String(this.config?.relay || '').trim();
     if (!input) {
       this._setStatus(STATUS.OFF);
       return;
@@ -68,20 +129,23 @@ export class YouTubeAdapter extends BaseAdapter {
       this._fail('Enlace de YouTube no reconocido');
       return;
     }
-    if (IS_BROWSER && !apiKey && !relay) {
-      this._fail(
-        'YouTube en la web necesita relay propio o API key (en la APK funciona sin nada). Guia en docs/SETUP.md',
-      );
+    const force = String(this.config?.mode || '').trim();
+    this._mode = apiKey
+      ? 'official'
+      : force === 'scrape' || (IS_BROWSER && force !== 'innertube')
+        ? 'scrape'
+        : 'innertube';
+    if (this._mode === 'scrape' && this._parsed.kind === 'channel') {
+      this._fail('En la web, pega el enlace del directo (@canal necesita API key o la APK)');
       return;
     }
-    this._relay = IS_BROWSER && relay ? relay.replace(/\/+$/, '') : '';
-    this._mode = apiKey ? 'official' : 'innertube';
     this._videoId = this._parsed.kind === 'video' ? this._parsed.value : null;
     this._chatId = null;
     this._pageToken = null;
     this._continuation = null;
     this._seen = new Set();
     this._warmed = false;
+    this._proxyIdx = 0;
     this._startedAt = Date.now();
     this._setStatus(STATUS.CONNECTING);
     this._loop();
@@ -89,13 +153,8 @@ export class YouTubeAdapter extends BaseAdapter {
 
   // ---------- HTTP ----------
 
-  // En la web todas las llamadas a youtube.com pasan por el relay propio.
-  _wrap(url) {
-    return this._relay ? `${this._relay}/?url=${encodeURIComponent(url)}` : url;
-  }
-
   async _fetchText(url) {
-    const res = await fetch(this._wrap(url), { headers: { 'user-agent': UA, cookie: COOKIE } });
+    const res = await fetch(url, { headers: { 'user-agent': UA, cookie: COOKIE } });
     if (!res.ok) throw new Error('YouTube: HTTP ' + res.status);
     return { text: await res.text(), url: res.url };
   }
@@ -118,7 +177,7 @@ export class YouTubeAdapter extends BaseAdapter {
       cookie: COOKIE,
     };
     if (this._visitor) headers['x-goog-visitor-id'] = this._visitor;
-    const res = await fetch(this._wrap(`https://www.youtube.com/youtubei/v1/${path}?key=${this._key}&prettyPrint=false`), {
+    const res = await fetch(`https://www.youtube.com/youtubei/v1/${path}?key=${this._key}&prettyPrint=false`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -282,6 +341,50 @@ export class YouTubeAdapter extends BaseAdapter {
     return Math.min(Math.max(Number(data.pollingIntervalMillis) || 5000, 5000), MAX_WAIT_MS);
   }
 
+  // ---------- modo web sin clave (scraping del popout del chat) ----------
+
+  async _scrapeRaw(url) {
+    let lastErr = null;
+    for (let i = 0; i < SCRAPE_PROXIES.length; i++) {
+      const idx = (this._proxyIdx + i) % SCRAPE_PROXIES.length;
+      const { url: proxyUrl, headers } = SCRAPE_PROXIES[idx](url);
+      try {
+        const h = { ...headers, referer: 'https://eduardr10.github.io/' };
+        if (!IS_BROWSER) h['user-agent'] = UA;
+        const res = await fetch(proxyUrl, { headers: h });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const text = await res.text();
+        if (!text.includes('ytInitialData')) throw new Error('respuesta sin datos de YouTube');
+        this._proxyIdx = idx;
+        return text;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw new Error('No pude leer el chat (' + String(lastErr?.message || lastErr) + ')');
+  }
+
+  async _scrapePoll() {
+    if (!this._videoId) throw new Error('En la web, pega el enlace del directo');
+    const url = `https://www.youtube.com/live_chat?is_popout=1&v=${this._videoId}`;
+    const html = await this._scrapeRaw(url);
+    const data = extractInitialData(html);
+    if (!data) throw new Error('YouTube cambió la estructura de la página del chat');
+    const list = collectChat(data);
+    if (!list.length && !html.includes('liveChatRenderer')) throw new Error('Ese video no tiene chat activo');
+    this._connected();
+    if (list.length) {
+      this._innertubeEmit({
+        continuationContents: {
+          liveChatContinuation: {
+            actions: list.map((item) => ({ addChatItemAction: { item } })),
+          },
+        },
+      });
+    }
+    return 4000 + Math.floor(Math.random() * 1500);
+  }
+
   // ---------- modo sin clave (InnerTube) ----------
 
   async _innertubePoll() {
@@ -368,9 +471,9 @@ export class YouTubeAdapter extends BaseAdapter {
         if (this._mode === 'innertube') {
           await this._loadInnertubeCfg();
           if (!this._videoId) this._videoId = await this._resolveVideoId();
-        } else if (this._parsed.kind === 'channel' && !this._chatId) {
+        } else if (this._mode === 'official' && this._parsed.kind === 'channel' && !this._chatId) {
           if (this._parsed.value.startsWith('/c/')) {
-            if (IS_BROWSER && !this._relay) throw new Error('Con API key en la web usa @handle o la URL del directo (no /c/)');
+            if (IS_BROWSER) throw new Error('Con API key en la web usa @handle o la URL del directo (no /c/)');
             await this._loadInnertubeCfg();
             if (!this._videoId) this._videoId = await this._resolveVideoId();
           } else {
@@ -378,7 +481,11 @@ export class YouTubeAdapter extends BaseAdapter {
           }
         }
         const wait =
-          this._mode === 'official' ? await this._officialPoll() : await this._innertubePoll();
+          this._mode === 'official'
+            ? await this._officialPoll()
+            : this._mode === 'scrape'
+              ? await this._scrapePoll()
+              : await this._innertubePoll();
         await this._sleep(wait);
       } catch (err) {
         if (this.stopped) return;

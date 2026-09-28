@@ -15,18 +15,17 @@ const settingsError = document.getElementById('settings-error');
 const inputTwitch = document.getElementById('inp-twitch');
 const inputYoutube = document.getElementById('inp-youtube');
 const inputKey = document.getElementById('inp-key');
-const inputRelay = document.getElementById('inp-relay');
 const inputKick = document.getElementById('inp-kick');
 
 const config = loadConfig();
 
-// Versión web (GitHub Pages / npm run serve): YouTube bloquea las llamadas
-// cruzadas (403 + sin CORS); hace falta relay propio o API key para mezclarlo.
+// Versión web (GitHub Pages / npm run serve): YouTube se lee por scraping del
+// popout del chat (proxies GET con CORS); sin clave y sin configuración extra.
 if (typeof window !== 'undefined' && !window.Capacitor?.isNativePlatform?.()) {
   const ytHint = document.getElementById('yt-hint');
   if (ytHint) {
     ytHint.textContent =
-      'Version web: Twitch y Kick sin clave. YouTube se mezcla en la lista con un relay propio (ver abajo) o con API key. Guia en docs/SETUP.md';
+      'Version web: Twitch y Kick sin clave. YouTube se lee por scraping (pega el enlace del directo). API key opcional.';
   }
 }
 
@@ -96,8 +95,7 @@ function startAll() {
   adapters.twitch.start(config.twitchChannel.trim() ? { channel: config.twitchChannel } : null);
   const youtubeInput = config.youtubeUrl.trim();
   const apiKey = config.youtubeApiKey.trim();
-  const relay = config.youtubeRelay.trim();
-  adapters.youtube.start(youtubeInput ? { input: youtubeInput, apiKey, relay } : null);
+  adapters.youtube.start(youtubeInput ? { input: youtubeInput, apiKey } : null);
   adapters.kick.start(config.kickChannel.trim() ? { channel: config.kickChannel } : null);
 }
 
@@ -186,7 +184,6 @@ function openSettings() {
   inputTwitch.value = config.twitchChannel;
   inputYoutube.value = config.youtubeUrl;
   inputKey.value = config.youtubeApiKey;
-  inputRelay.value = config.youtubeRelay;
   inputKick.value = config.kickChannel;
   settingsError.hidden = true;
   overlayEl.hidden = false;
@@ -203,16 +200,9 @@ function saveSettings() {
     settingsError.hidden = false;
     return;
   }
-  const youtubeRelay = inputRelay.value.trim();
-  if (youtubeRelay && !/^https?:\/\/.+/i.test(youtubeRelay)) {
-    settingsError.textContent = 'El relay debe ser una URL tipo https://tu-relay.workers.dev (o déjalo vacío)';
-    settingsError.hidden = false;
-    return;
-  }
   config.twitchChannel = inputTwitch.value.trim();
   config.youtubeUrl = youtubeUrl;
   config.youtubeApiKey = inputKey.value.trim();
-  config.youtubeRelay = youtubeRelay.replace(/\/+$/, '');
   config.kickChannel = inputKick.value.trim();
   saveConfig(config);
   closeSettings();
